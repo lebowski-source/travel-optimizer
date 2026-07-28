@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-navy text-cream font-sans antialiased;
+}
+
+input,
+select,
+textarea {
+  @apply bg-panel2 border border-teal/40 rounded px-2.5 py-1.5 text-sm text-cream placeholder:text-seafoam/40 focus:outline-none focus:border-tealbright focus:ring-1 focus:ring-tealbright/50;
+}
+
+input[type="checkbox"] {
+  @apply accent-teal w-4 h-4 p-0;
+}
