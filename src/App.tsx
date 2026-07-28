@@ -510,9 +510,9 @@ export default function App() {
             onClick={() =>
               setTrip((t) => ({ ...t, destinations: [...t.destinations, newDestination()] }))
             }
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-teal hover:text-tealbright"
+            className="mt-4 w-full inline-flex items-center justify-center gap-2 border-2 border-dashed border-teal/60 hover:border-tealbright hover:bg-teal/10 text-seafoam hover:text-cream font-semibold py-3 rounded-lg transition-colors"
           >
-            <Plus size={16} /> Add destination
+            <Plus size={18} /> Add another destination
           </button>
         </Section>
 
