@@ -7,11 +7,17 @@ import {
   Check,
   Copy,
   Download,
+  Loader2,
   MapPin,
   Plus,
+  Settings2,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
+import { Phase, loadSettings, runOptimization, saveSettings } from "./gemini";
+import { ItineraryResult } from "./result-types";
+import Results from "./Results";
 import {
   Destination,
   INTEREST_OPTIONS,
@@ -254,8 +260,53 @@ export default function App() {
   const [output, setOutput] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState(loadSettings);
+  const [showSettings, setShowSettings] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState<Phase | null>(null);
+  const [result, setResult] = useState<ItineraryResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const outRef = useRef<HTMLDivElement>(null);
+
+  const validate = (): boolean => {
+    if (!trip.origin.trim()) {
+      setError("Enter your starting location.");
+      return false;
+    }
+    if (!trip.destinations.some((d) => d.name.trim())) {
+      setError("Add at least one destination.");
+      return false;
+    }
+    if (trip.tripLengthDays === "") {
+      setError("Enter the trip length in days.");
+      return false;
+    }
+    setError(null);
+    return true;
+  };
+
+  const run = async () => {
+    if (!validate()) return;
+    if (!settings.apiKey.trim()) {
+      setShowSettings(true);
+      setError("Add your free Gemini API key in Settings first.");
+      return;
+    }
+    setRunning(true);
+    setResult(null);
+    setOutput(null);
+    setError(null);
+    try {
+      const r = await runOptimization(trip, settings.apiKey.trim(), settings.model, setPhase);
+      setResult(r);
+      setTimeout(() => outRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(false);
+      setPhase(null);
+    }
+  };
 
   const up = (patch: Partial<TripRequest>) => setTrip((t) => ({ ...t, ...patch }));
 
@@ -279,12 +330,8 @@ export default function App() {
     arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v];
 
   const generate = () => {
-    if (!trip.origin.trim()) return setError("Enter your starting location.");
-    if (!trip.destinations.some((d) => d.name.trim()))
-      return setError("Add at least one destination.");
-    if (trip.tripLengthDays === "")
-      return setError("Enter the trip length in days.");
-    setError(null);
+    if (!validate()) return;
+    setResult(null);
     setOutput(buildPrompt(trip));
     setCopied(false);
     setTimeout(() => outRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -344,13 +391,51 @@ export default function App() {
           turns into a fully optimized, bookable itinerary — flights, rail,
           ferries, hotels, budgets, and things to do.
         </p>
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="mt-3 inline-flex items-center gap-1.5 text-sm text-seafoam hover:text-cream underline underline-offset-4"
-        >
-          <Upload size={14} /> Load a saved trip-request.json
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex items-center gap-1.5 text-sm text-seafoam hover:text-cream underline underline-offset-4"
+          >
+            <Upload size={14} /> Load a saved trip-request.json
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings((s) => !s)}
+            className="inline-flex items-center gap-1.5 text-sm text-seafoam hover:text-cream underline underline-offset-4"
+          >
+            <Settings2 size={14} /> Settings {settings.apiKey ? "✓" : "(add API key)"}
+          </button>
+        </div>
+        {showSettings && (
+          <div className="mt-4 bg-panel border border-teal/30 rounded-lg p-4 grid md:grid-cols-2 gap-4">
+            <Field
+              label="Gemini API key"
+              hint="Free at aistudio.google.com → Get API key. Stored only in this browser."
+            >
+              <input
+                type="password"
+                placeholder="AIza…"
+                value={settings.apiKey}
+                onChange={(e) => {
+                  const s = { ...settings, apiKey: e.target.value };
+                  setSettings(s);
+                  saveSettings(s);
+                }}
+              />
+            </Field>
+            <Field label="Model" hint="gemini-2.5-flash is free-tier friendly">
+              <input
+                value={settings.model}
+                onChange={(e) => {
+                  const s = { ...settings, model: e.target.value };
+                  setSettings(s);
+                  saveSettings(s);
+                }}
+              />
+            </Field>
+          </div>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -626,23 +711,49 @@ export default function App() {
         </Section>
       </div>
 
-      {/* generate */}
+      {/* run */}
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={generate}
-          className="bg-teal hover:bg-tealbright text-cream font-semibold px-6 py-3 rounded-md transition-colors"
+          onClick={run}
+          disabled={running}
+          className="inline-flex items-center gap-2 bg-teal hover:bg-tealbright disabled:opacity-60 text-cream font-semibold px-6 py-3 rounded-md transition-colors"
         >
-          Generate trip request
+          {running ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
+          {running
+            ? phase === "structure"
+              ? "Building your itinerary…"
+              : "Searching flights, hotels & routes…"
+            : "Optimize my trip"}
+        </button>
+        <button
+          type="button"
+          onClick={generate}
+          disabled={running}
+          className="border border-teal/50 hover:border-teal text-seafoam px-4 py-3 rounded-md text-sm transition-colors disabled:opacity-60"
+        >
+          Build prompt only
         </button>
         <button
           type="button"
           onClick={download}
           className="inline-flex items-center gap-1.5 border border-teal/50 hover:border-teal text-seafoam px-4 py-3 rounded-md text-sm transition-colors"
         >
-          <Download size={15} /> Download trip-request.json
+          <Download size={15} /> Save .json
         </button>
-        {error && <span className="text-red-300 text-sm">{error}</span>}
+        {error && <span className="text-red-300 text-sm max-w-md">{error}</span>}
+      </div>
+      {running && (
+        <p className="mt-3 text-sm text-cream/55">
+          {phase === "structure"
+            ? "Research done — organizing everything into your timeline…"
+            : "Running live searches across the travel matrix. A thorough multi-stop search can take a few minutes."}
+        </p>
+      )}
+
+      {/* results timeline */}
+      <div ref={result ? outRef : undefined}>
+        {result && <Results result={result} />}
       </div>
 
       {/* output */}
